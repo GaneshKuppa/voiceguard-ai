@@ -1,0 +1,249 @@
+# training/train.py - Accuracy-optimized training script
+import torch
+from transformers import Wav2Vec2Processor, Wav2Vec2ForSequenceClassification
+from torch.utils.data import DataLoader
+from dataset import VoiceDataset, create_balanced_loader
+import os
+from sklearn.model_selection import train_test_split
+from collections import Counter
+import numpy as np
+import random
+from sklearn.metrics import f1_score, accuracy_score, classification_report
+
+# ✅ OPTIMIZED CONFIGURATION
+MODEL_NAME = "facebook/wav2vec2-base"
+NUM_LABELS = 2
+BATCH_SIZE = 2  # Small for CPU, increase to 8 for GPU
+EPOCHS = 12
+LEARNING_RATE = 1e-5
+EARLY_STOP_PATIENCE = 4
+CHUNK_DURATION = 4.0  # Seconds of audio per sample
+
+# ✅ FOCAL LOSS for imbalanced datasets
+class FocalLoss(torch.nn.Module):
+    def __init__(self, alpha=0.75, gamma=2.0):
+        super().__init__()
+        self.alpha = alpha  # Weight for rare class (human)
+        self.gamma = gamma  # Focus on hard examples
+    
+    def forward(self, logits, targets):
+        ce_loss = torch.nn.functional.cross_entropy(logits, targets, reduction='none')
+        pt = torch.exp(-ce_loss)
+        focal_loss = self.alpha * (1 - pt) ** self.gamma * ce_loss
+        return focal_loss.mean()
+
+
+def set_seed(seed=42):
+    """Set random seeds for reproducibility"""
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+
+
+def prepare_data(data_dir):
+    """Load file paths and labels from organized folders"""
+    paths, labels = [], []
+    
+    # 0 = Human (REAL), 1 = Fake (AI)
+    for label, folder_name in enumerate(['human', 'fake']):
+        folder_path = os.path.join(data_dir, folder_name)
+        if not os.path.exists(folder_path): 
+            print(f"⚠️ Warning: {folder_path} not found.")
+            continue
+        for file in os.listdir(folder_path):
+            if file.lower().endswith(('.wav', '.flac', '.mp3', '.m4a')):
+                paths.append(os.path.join(folder_path, file))
+                labels.append(label)
+    
+    print(f"📊 Dataset: {Counter(labels)}")
+    
+    if len(paths) < 10:
+        print("❌ Too few samples. Need at least 10 total files.")
+        return None, None, None, None
+        
+    # Stratified split to preserve class ratio
+    return train_test_split(
+        paths, labels, 
+        test_size=0.25,
+        random_state=42,
+        stratify=labels
+    )
+
+
+def train():
+    set_seed(42)
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"🚀 Training on: {device} | Model: {MODEL_NAME}")
+
+    result = prepare_data('data')
+    if result[0] is None:
+        return
+        
+    train_paths, test_paths, train_labels, test_labels = result
+    print(f"📚 Train: {len(train_paths)} | Test: {len(test_paths)}")
+    print(f"📊 Train distribution: {Counter(train_labels)}")
+
+    # Create balanced data loaders
+    train_loader = create_balanced_loader(
+        train_paths, train_labels, 
+        batch_size=BATCH_SIZE, 
+        augment=True,
+        sample_rate=16000
+    )
+    test_loader = create_balanced_loader(
+        test_paths, test_labels, 
+        batch_size=BATCH_SIZE, 
+        augment=False,
+        sample_rate=16000
+    )
+
+    # Load pre-trained model
+    print(f"📥 Loading {MODEL_NAME}...")
+    processor = Wav2Vec2Processor.from_pretrained(MODEL_NAME)
+    model = Wav2Vec2ForSequenceClassification.from_pretrained(
+        MODEL_NAME, 
+        num_labels=NUM_LABELS,
+        attention_dropout=0.1,
+        hidden_dropout=0.1,
+        classifier_dropout=0.1
+    )
+    
+    # ✅ FREEZE early layers to prevent overfitting on small data
+    for name, param in model.wav2vec2.named_parameters():
+        if "encoder.layers" in name:
+            try:
+                layer_num = int(name.split(".")[2])
+                if layer_num < 10:  # Freeze first 10 of 12 layers
+                    param.requires_grad = False
+            except (IndexError, ValueError):
+                pass
+    
+    model.to(device)
+
+    # ✅ OPTIMIZER + FOCAL LOSS
+    optimizer = torch.optim.AdamW(
+        filter(lambda p: p.requires_grad, model.parameters()), 
+        lr=LEARNING_RATE,
+        weight_decay=0.01
+    )
+    criterion = FocalLoss(alpha=0.75, gamma=2.0)
+    
+    best_f1 = 0.0
+    patience_counter = 0
+    os.makedirs('models', exist_ok=True)
+
+    print(f"\n🎯 Training for {EPOCHS} epochs (Focal Loss + Balanced Sampling)...")
+    print(f"⚖️  Class weights applied via WeightedRandomSampler")
+
+    for epoch in range(EPOCHS):
+        # Training phase
+        model.train()
+        total_loss = 0
+        
+        for batch in train_loader:
+            input_values = batch["input_values"].to(device)
+            labels = batch["label"].to(device)
+
+            inputs = processor(
+                input_values.tolist(), 
+                sampling_rate=16000, 
+                return_tensors="pt", 
+                padding=True,
+                max_length=int(16000 * CHUNK_DURATION),
+                truncation=True
+            )
+            inputs = {k: v.to(device) for k, v in inputs.items()}
+
+            optimizer.zero_grad()
+            outputs = model(**inputs)
+            loss = criterion(outputs.logits, labels)
+            loss.backward()
+            
+            # Gradient clipping to prevent explosion
+            torch.nn.utils.clip_grad_norm_(
+                filter(lambda p: p.requires_grad, model.parameters()), 
+                max_norm=1.0
+            )
+            
+            optimizer.step()
+            total_loss += loss.item()
+
+        # Evaluation phase
+        model.eval()
+        all_preds, all_labels = [], []
+        
+        with torch.no_grad():
+            for batch in test_loader:
+                input_values = batch["input_values"].to(device)
+                labels_batch = batch["label"].to(device)
+                
+                inputs = processor(
+                    input_values.tolist(), 
+                    sampling_rate=16000, 
+                    return_tensors="pt", 
+                    padding=True,
+                    max_length=int(16000 * CHUNK_DURATION),
+                    truncation=True
+                )
+                inputs = {k: v.to(device) for k, v in inputs.items()}
+                
+                outputs = model(**inputs)
+                probs = torch.softmax(outputs.logits, dim=-1)
+                preds = torch.argmax(probs, dim=-1)
+                
+                all_preds.extend(preds.cpu().numpy())
+                all_labels.extend(labels_batch.cpu().numpy())
+        
+        # Calculate metrics
+        acc = accuracy_score(all_labels, all_preds)
+        human_f1 = f1_score(all_labels, all_preds, labels=[0], zero_division=0)
+        fake_f1 = f1_score(all_labels, all_preds, labels=[1], zero_division=0)
+        
+        print(f"Epoch {epoch+1:2d}/{EPOCHS} | "
+              f"Loss: {total_loss/len(train_loader):.4f} | "
+              f"Acc: {acc*100:.1f}% | "
+              f"Human F1: {human_f1*100:.1f}% | "
+              f"Fake F1: {fake_f1*100:.1f}%")
+
+        # ✅ Save based on Human F1 (critical for imbalanced data)
+        if human_f1 > best_f1:
+            best_f1 = human_f1
+            patience_counter = 0
+            
+            # Save model and processor
+            save_path = "models/voice_guard_model"
+            model.save_pretrained(save_path)
+            processor.save_pretrained(save_path)
+            
+            # Save training config for reproducibility
+            import json
+            config = {
+                "model_name": MODEL_NAME,
+                "epochs": EPOCHS,
+                "batch_size": BATCH_SIZE,
+                "learning_rate": LEARNING_RATE,
+                "best_human_f1": best_f1,
+                "class_distribution": dict(Counter(train_labels))
+            }
+            with open(f"{save_path}/training_config.json", "w") as f:
+                json.dump(config, f, indent=2)
+            
+            print(f"💾 ✅ Saved! Human F1: {human_f1*100:.1f}%")
+        else:
+            patience_counter += 1
+            if patience_counter >= EARLY_STOP_PATIENCE:
+                print(f"⏹️ Early stopping (Human F1 not improving for {patience_counter} epochs)")
+                break
+
+    # Final evaluation report
+    print(f"\n📊 Final Classification Report:")
+    print(classification_report(all_labels, all_preds, target_names=['Human', 'Fake']))
+    print(f"\n🎉 Training complete! Best Human F1: {best_f1*100:.1f}%")
+    print(f"📁 Model saved to: models/voice_guard_model/")
+    print(f"💡 To use: Start backend with 'uvicorn backend.main:app --port 8000'")
+
+
+if __name__ == "__main__":
+    train()

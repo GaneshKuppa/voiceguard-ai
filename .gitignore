@@ -1,0 +1,114 @@
+# ============================================
+# VoiceGuard AI - Git Ignore File
+# Exclude large/user-specific files
+# ============================================
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.eggs/
+*.egg
+
+# Virtual environments
+venv/
+ENV/
+env/
+.venv/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*.swn
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Git
+.git/
+
+# Docker
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+temp_uploads/
+*.tmp
+*.temp
+
+# Test files
+tests/
+test_*.py
+.pytest_cache/
+.coverage
+htmlcov/
+
+# ============================================
+# CRITICAL: Exclude large user data folders
+# ============================================
+
+# Training data (users add their own)
+data/
+!data/.gitkeep
+
+# Trained models (users train or download)
+models/
+!models/.gitkeep
+models/*.bin
+models/*.safetensors
+models/*.pt
+models/*.pth
+
+# User recordings (privacy - don't commit)
+recordings/
+!recordings/.gitkeep
+
+# Hugging Face cache (downloaded at runtime)
+hf_cache/
+.cache/
+.huggingface/
+
+# Large binary files
+*.bin
+*.safetensors
+*.pt
+*.pth
+*.onnx
+
+# Audio/video files (prevent accidental inclusion)
+*.wav
+*.mp3
+*.flac
+*.m4a
+*.aac
+*.ogg
+*.mp4
+*.mov
+*.avi
+
+# Archives
+*.zip
+*.tar.gz
+*.tar
+*.7z
+*.rar
+*.dmg
+*.iso
+
+# Node modules
+node_modules/
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
