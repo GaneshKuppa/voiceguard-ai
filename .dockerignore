@@ -1,0 +1,78 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.eggs/
+
+# Virtual environments
+venv/
+ENV/
+env/
+.venv/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Git
+.git/
+
+# Docker
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+temp_uploads/
+*.tmp
+
+# Test files
+tests/
+test_*.py
+.pytest_cache/
+.coverage
+htmlcov/
+
+# ============================================
+# CRITICAL: Exclude large user data folders
+# ============================================
+
+# Training data (users add their own)
+data/
+!data/.gitkeep
+
+# Trained models (users train their own or download)
+models/
+!models/.gitkeep
+
+# User recordings (privacy - don't commit)
+recordings/
+
+# Hugging Face cache (downloaded at runtime)
+hf_cache/
+.cache/
+
+# Large binary files
+*.bin
+*.safetensors
+*.pt
+*.pth
+
+# Audio files (prevent accidental inclusion)
+*.wav
+*.mp3
+*.flac
+*.m4a

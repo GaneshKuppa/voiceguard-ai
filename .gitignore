@@ -1,6 +1,5 @@
 # ============================================
 # VoiceGuard AI - Git Ignore File
-# Exclude large/user-specific files
 # ============================================
 
 # Python
@@ -10,7 +9,6 @@ __pycache__/
 *.so
 .Python
 *.egg-info/
-.eggs/
 *.egg
 
 # Virtual environments
@@ -33,14 +31,9 @@ Thumbs.db
 # Git
 .git/
 
-# Docker
-Dockerfile
-docker-compose.yml
-.dockerignore
-
 # Logs
 *.log
-logs/
+logs/*.log
 
 # Temporary files
 temp_uploads/
@@ -55,56 +48,45 @@ test_*.py
 htmlcov/
 
 # ============================================
-# CRITICAL: Exclude large user data folders
+# IMPORTANT: Allow .gitkeep files
+# ============================================
+# Don't ignore .gitkeep files (they preserve folder structure)
+!.gitkeep
+!**/.gitkeep
+
+# ============================================
+# Exclude large user data (but keep .gitkeep)
 # ============================================
 
-# Training data (users add their own)
-data/
-!data/.gitkeep
+# Training data files (but keep folder structure)
+data/*.wav
+data/*.mp3
+data/*.flac
+data/*.m4a
+data/human/*.wav
+data/human/*.mp3
+data/fake/*.wav
+data/fake/*.mp3
 
-# Trained models (users train or download)
-models/
-!models/.gitkeep
+# Trained models (large files - users train their own)
 models/*.bin
 models/*.safetensors
 models/*.pt
 models/*.pth
+models/voice_guard_model/*.bin
+models/voice_guard_model/*.safetensors
 
-# User recordings (privacy - don't commit)
-recordings/
-!recordings/.gitkeep
+# User recordings (privacy - don't commit actual recordings)
+recordings/*.wav
+recordings/*.mp3
 
 # Hugging Face cache (downloaded at runtime)
 hf_cache/
 .cache/
 .huggingface/
 
-# Large binary files
-*.bin
-*.safetensors
-*.pt
-*.pth
-*.onnx
-
-# Audio/video files (prevent accidental inclusion)
-*.wav
-*.mp3
-*.flac
-*.m4a
-*.aac
-*.ogg
-*.mp4
-*.mov
-*.avi
-
-# Archives
-*.zip
-*.tar.gz
-*.tar
-*.7z
-*.rar
-*.dmg
-*.iso
+# Docker (keep the files, exclude build artifacts)
+# Keep: Dockerfile, docker-compose.yml, .dockerignore
 
 # Node modules
 node_modules/

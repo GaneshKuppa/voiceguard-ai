@@ -1,0 +1,55 @@
+# Prevent unnecessary files from being copied into Docker image
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.eggs/
+
+# Virtual environments
+venv/
+ENV/
+env/
+.venv/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Git
+.git/
+.gitignore
+
+# Docker
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# Logs
+*.log
+logs/
+
+# Large model files (will be downloaded inside container)
+# models/*.bin
+# models/*.safetensors
+
+# Audio data (user adds their own)
+# data/*/*.wav
+# data/*/*.mp3
+
+# Temporary files
+temp_uploads/
+*.tmp
+
+# Test files
+tests/
+test_*.py
